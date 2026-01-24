@@ -199,6 +199,10 @@ vac/
 ├── control-plane/        # Mock Control Plane server
 ├── demo-api/             # Demo upstream API for testing
 ├── docs/                 # Architecture, API, deployment, security
+├── sdks/
+│   └── python/           # Python client library
+│       ├── vac_client.py
+│       └── example.py
 └── examples/
     └── biscuit_spike.rs
 ```
@@ -209,6 +213,9 @@ vac/
 - **[API Reference](docs/API.md)** — HTTP API and Datalog policy reference
 - **[Deployment Guide](docs/DEPLOYMENT.md)** — Production deployment instructions
 - **[Security Guide](docs/SECURITY.md)** — Security considerations and threat model
+- **[VAC vs Alternatives](docs/VAC_VS_ALTERNATIVES.md)** — Comparison with OAuth, API keys, etc.
+- **[LangChain Integration](docs/INTEGRATION_LANGCHAIN.md)** — Using VAC with LangChain agents
+- **[Python SDK](sdks/python/)** — Python client library
 
 ## Architecture Overview
 
