@@ -1,0 +1,14 @@
+[sidecar]
+root_public_key = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+api_key = "test-api-key-from-file"
+upstream_url = "http://test-upstream:8080"
+control_plane_url = "http://test-control-plane:8081"
+heartbeat_interval_secs = 90
+session_key_rotation_interval_secs = 600
+adapters_dir = "/test/adapters"
+
+[logging]
+level = "debug"
+
+[revocation]
+# Future: bloom filter settings

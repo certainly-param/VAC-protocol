@@ -1,0 +1,14 @@
+# VAC Sidecar configuration example
+# Copy to config.toml and fill in your values.
+# Usage: cargo run --bin vac-sidecar -- --config-file config.toml
+
+[sidecar]
+root_public_key = "your-64-char-hex-from-generate_test_keys"
+api_key = "your-upstream-api-key"
+upstream_url = "http://localhost:8080"
+control_plane_url = "http://localhost:8081"
+heartbeat_interval_secs = 60
+session_key_rotation_interval_secs = 300
+
+[logging]
+level = "info"  # trace, debug, info, warn, error

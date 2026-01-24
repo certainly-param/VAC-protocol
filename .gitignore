@@ -1,0 +1,43 @@
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+
+# Local config (use config.toml.example as template)
+config.toml
+
+# Secrets and env
+.env
+.env.*
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+.Spotlight-V100
+.Trashes
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+*.profraw
+lcov.info
+coverage/
+
+# Generated files
+*.generated.*
+
+# Cursor/AI assistant
+.cursorignore
+.cursor/
