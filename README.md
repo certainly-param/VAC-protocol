@@ -276,24 +276,19 @@ The agent carries **proofs (receipts)** of completed actions. The sidecar checks
 
 ## Testing
 
-Run the integration test suite:
-
 ```bash
 cd sidecar
-cargo test --test integration_test
-```
-
-Current test coverage:
-- Root Biscuit verification, receipt minting and extraction, multi-receipt chain, state gates
-- Error handling (missing token, invalid signature, expired receipt)
-- WASM adapter execution, multi-agent delegation chains
-- Configuration loading (files, CLI, env vars), config precedence
-- Security: validation, rate limiting, replay cache (`security_test`)
-
-**Note:** Config tests: run with `--test-threads=1` (env isolation):
-```bash
+# Unit tests (config tests need single-thread for env isolation)
 cargo test --lib -- --test-threads=1
+# Integration tests
+cargo test --test integration_test --test delegation_chain_integration_test \
+  --test delegation_depth_test --test heartbeat_test --test revocation_test \
+  --test security_test --test wasm_adapter_test -- --test-threads=1
 ```
+
+**Coverage:**
+- **Unit:** biscuit (verify root/receipt, revocation), revocation (filter, `extract_token_id`), receipt (extract, expiry, correlation), policy (allow/deny, depth limit), config, rate limit, replay cache, security
+- **Integration:** root biscuit verification, receipt minting and chain, state gates, missing token, invalid signature; delegation chains and depth; heartbeat (success, failure); revocation (revoke then verify rejected); WASM adapters; security
 
 ## Contributing
 

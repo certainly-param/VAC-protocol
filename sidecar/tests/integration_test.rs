@@ -1,24 +1,17 @@
-// Integration tests for V-A-C Sidecar
+// Integration tests for VAC Sidecar
+mod common;
+
 use axum::{
     http::{HeaderValue, Method},
     routing::any,
     Router,
 };
-use biscuit_auth::{Biscuit, KeyPair, Authorizer}; // Added Authorizer
-use std::sync::Arc;
+use biscuit_auth::{Biscuit, KeyPair, Authorizer};
 use uuid::Uuid;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
 
-use vac_sidecar::{
-    SidecarState, SharedState,
-};
-
-// ... (Helper functions remain the same) ...
-fn generate_test_root_biscuit(kp: &KeyPair) -> Result<Biscuit, Box<dyn std::error::Error>> {
-    let builder = Biscuit::builder();
-    Ok(builder.build(kp)?)
-}
+use vac_sidecar::SharedState;
 
 // -----------------------------------------------------------------------------
 // SECTION 2: PERMISSIVE ROUTER (Plumbing Tests)
@@ -116,7 +109,7 @@ async fn create_permissive_router(state: SharedState) -> Router {
 
         // I. Forward
         let req = axum::http::Request::from_parts(parts, body);
-        let response = match proxy.as_ref().forward(req, &api_key, &upstream_url).await {
+        let response = match proxy.as_ref().forward(req, api_key.as_str(), &upstream_url).await {
             Ok(r) => r,
             Err(e) => return e.into_response(),
         };
@@ -265,7 +258,7 @@ async fn create_strict_router(state: SharedState) -> Router {
 
         // ... Forwarding and Minting logic remains same ...
         let req = axum::http::Request::from_parts(parts, body);
-        let response = match proxy.as_ref().forward(req, &api_key, &upstream_url).await {
+        let response = match proxy.as_ref().forward(req, api_key.as_str(), &upstream_url).await {
             Ok(r) => r,
             Err(e) => return e.into_response(),
         };
@@ -380,12 +373,10 @@ async fn test_root_biscuit_verification() {
         .respond_with(ResponseTemplate::new(200).set_body_string("OK"))
         .mount(&mock_server).await;
     
-    let state = Arc::new(std::sync::RwLock::new(
-        SidecarState::new(root_keypair.public(), "k".into(), mock_server.uri())
-    ));
+    let state = common::default_test_state(root_keypair.public(), "k", mock_server.uri());
     
     let app = create_permissive_router(state).await;
-    let root_biscuit = generate_test_root_biscuit(&root_keypair).unwrap();
+    let root_biscuit = common::generate_test_root_biscuit(&root_keypair).unwrap();
     let token = root_biscuit.to_base64().unwrap();
     
     let response = make_request(app, "/test", Method::GET, Some(&format!("Bearer {}", token)), None).await.unwrap();
@@ -402,12 +393,10 @@ async fn test_receipt_minting() {
         .respond_with(ResponseTemplate::new(200).set_body_string("OK"))
         .mount(&mock_server).await;
     
-    let state = Arc::new(std::sync::RwLock::new(
-        SidecarState::new(root_keypair.public(), "k".into(), mock_server.uri())
-    ));
+    let state = common::default_test_state(root_keypair.public(), "k", mock_server.uri());
     
     let app = create_permissive_router(state.clone()).await;
-    let root_biscuit = generate_test_root_biscuit(&root_keypair).unwrap();
+    let root_biscuit = common::generate_test_root_biscuit(&root_keypair).unwrap();
     let token = root_biscuit.to_base64().unwrap();
     
     let response = make_request(app, "/test", Method::GET, Some(&format!("Bearer {}", token)), None).await.unwrap();
@@ -427,7 +416,7 @@ async fn test_receipt_minting() {
 async fn test_missing_token() {
     let mock_server = MockServer::start().await;
     let root_keypair = KeyPair::new();
-    let state = Arc::new(std::sync::RwLock::new(SidecarState::new(root_keypair.public(), "k".into(), mock_server.uri())));
+    let state = common::default_test_state(root_keypair.public(), "k", mock_server.uri());
     let app = create_permissive_router(state).await;
     let response = make_request(app, "/test", Method::GET, None, None).await.unwrap();
     assert_eq!(response.status().as_u16(), 401);
@@ -437,11 +426,11 @@ async fn test_missing_token() {
 async fn test_invalid_signature() {
     let mock_server = MockServer::start().await;
     let root_keypair = KeyPair::new();
-    let state = Arc::new(std::sync::RwLock::new(SidecarState::new(root_keypair.public(), "k".into(), mock_server.uri())));
+    let state = common::default_test_state(root_keypair.public(), "k", mock_server.uri());
     let app = create_permissive_router(state).await;
     
     let bad_keypair = KeyPair::new();
-    let bad_biscuit = generate_test_root_biscuit(&bad_keypair).unwrap();
+    let bad_biscuit = common::generate_test_root_biscuit(&bad_keypair).unwrap();
     let token = bad_biscuit.to_base64().unwrap();
     
     let response = make_request(app, "/test", Method::GET, Some(&format!("Bearer {}", token)), None).await.unwrap();
@@ -457,12 +446,10 @@ async fn test_state_gate_enforcement() {
     Mock::given(method("GET")).and(path("/search")).respond_with(ResponseTemplate::new(200)).mount(&mock_server).await;
     Mock::given(method("POST")).and(path("/charge")).respond_with(ResponseTemplate::new(200)).mount(&mock_server).await;
     
-    let state = Arc::new(std::sync::RwLock::new(
-        SidecarState::new(root_keypair.public(), "key".into(), mock_server.uri())
-    ));
+    let state = common::default_test_state(root_keypair.public(), "key", mock_server.uri());
     
     let app = create_strict_router(state.clone()).await;
-    let root_biscuit = generate_test_root_biscuit(&root_keypair).unwrap();
+    let root_biscuit = common::generate_test_root_biscuit(&root_keypair).unwrap();
     let token = root_biscuit.to_base64().unwrap();
     
     // FIX: Generate one ID for the whole flow
@@ -503,12 +490,10 @@ async fn test_receipt_chain() {
     Mock::given(method("POST")).and(path("/select")).respond_with(ResponseTemplate::new(200).set_body_string("OK")).mount(&mock_server).await;
     Mock::given(method("POST")).and(path("/charge")).respond_with(ResponseTemplate::new(200).set_body_string("OK")).mount(&mock_server).await;
     
-    let state = Arc::new(std::sync::RwLock::new(
-        SidecarState::new(root_keypair.public(), "key".into(), mock_server.uri())
-    ));
+    let state = common::default_test_state(root_keypair.public(), "key", mock_server.uri());
     
     let app = create_permissive_router(state.clone()).await;
-    let root_biscuit = generate_test_root_biscuit(&root_keypair).unwrap();
+    let root_biscuit = common::generate_test_root_biscuit(&root_keypair).unwrap();
     let token = root_biscuit.to_base64().unwrap();
     
     let correlation_id = Uuid::new_v4().to_string();

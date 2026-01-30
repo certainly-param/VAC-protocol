@@ -1,19 +1,20 @@
+mod common;
+
 use axum::{routing::any, Router};
 use biscuit_auth::{Biscuit, KeyPair};
 use biscuit_auth::builder::Fact;
-use std::sync::Arc;
 use uuid::Uuid;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
 
-use vac_sidecar::{SidecarState, SharedState, create_delegated_token, DELEGATION_HEADER};
+use vac_sidecar::{SharedState, DELEGATION_HEADER};
 
-fn root_biscuit_with_depth0(kp: &KeyPair) -> Biscuit {
+fn root_biscuit_with_depth(kp: &KeyPair, depth: i64) -> Biscuit {
     let mut builder = Biscuit::builder();
     builder
         .add_fact(Fact::new(
             "depth".to_string(),
-            vec![biscuit_auth::builder::int(0)],
+            vec![biscuit_auth::builder::int(depth)],
         ))
         .unwrap();
     builder.build(kp).unwrap()
@@ -91,16 +92,12 @@ async fn test_valid_delegation_chain_allows() {
         .await;
 
     let root_keypair = KeyPair::new();
-    let state = Arc::new(std::sync::RwLock::new(SidecarState::new(
-        root_keypair.public(),
-        "k".into(),
-        mock_server.uri(),
-    )));
+    let state = common::default_test_state(root_keypair.public(), "k", mock_server.uri());
     let app = create_app(state).await;
 
-    let t0 = root_biscuit_with_depth0(&root_keypair);
-    let t1 = create_delegated_token(&t0, 1).unwrap();
-    let t2 = create_delegated_token(&t1, 2).unwrap();
+    let t0 = root_biscuit_with_depth(&root_keypair, 0);
+    let t1 = root_biscuit_with_depth(&root_keypair, 1);
+    let t2 = root_biscuit_with_depth(&root_keypair, 2);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -133,16 +130,11 @@ async fn test_invalid_delegation_chain_denies() {
         .await;
 
     let root_keypair = KeyPair::new();
-    let state = Arc::new(std::sync::RwLock::new(SidecarState::new(
-        root_keypair.public(),
-        "k".into(),
-        mock_server.uri(),
-    )));
+    let state = common::default_test_state(root_keypair.public(), "k", mock_server.uri());
     let app = create_app(state).await;
 
-    let t0 = root_biscuit_with_depth0(&root_keypair);
-    // Wrong depth jump: 2 instead of 1
-    let t_bad = create_delegated_token(&t0, 2).unwrap();
+    let t0 = root_biscuit_with_depth(&root_keypair, 0);
+    let t_bad = root_biscuit_with_depth(&root_keypair, 2);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

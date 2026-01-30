@@ -1,10 +1,11 @@
+mod common;
+
 use axum::{routing::any, Router};
 use biscuit_auth::{Biscuit, KeyPair};
-use std::sync::Arc;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
 
-use vac_sidecar::SidecarState;
+use vac_sidecar::{enforce_max_depth, authorize_only, add_context_facts, verify_root_biscuit, DEFAULT_MAX_DELEGATION_DEPTH};
 
 fn build_root_biscuit_with_depth(kp: &KeyPair, depth: i64) -> Biscuit {
     let mut builder = Biscuit::builder();
@@ -27,11 +28,7 @@ async fn test_delegation_depth_over_limit_denied() {
         .await;
 
     let root_keypair = KeyPair::new();
-    let state = Arc::new(std::sync::RwLock::new(SidecarState::new(
-        root_keypair.public(),
-        "k".into(),
-        mock_server.uri(),
-    )));
+    let state = common::default_test_state(root_keypair.public(), "k", mock_server.uri());
 
     // Build a minimal app using the main vac_guard_layer (so we exercise real enforcement).
     // We can't import vac_guard_layer directly (private), so we call through the binary by
@@ -43,10 +40,10 @@ async fn test_delegation_depth_over_limit_denied() {
     ) -> axum::response::Response {
         use axum::response::IntoResponse;
         use biscuit_auth::Authorizer;
-        use vac_sidecar::{VacError, verify_root_biscuit, add_context_facts, evaluate_policy};
+        use vac_sidecar::VacError;
 
         let (parts, body) = req.into_parts();
-        let _ = body; // no body needed for this test
+        let _ = body;
 
         let token_str = match parts.headers.get("Authorization") {
             Some(h) => match h.to_str().ok().and_then(|s| s.strip_prefix("Bearer ")) {
@@ -67,11 +64,16 @@ async fn test_delegation_depth_over_limit_denied() {
             return VacError::InternalError(format!("Failed to add root token: {:?}", e)).into_response();
         }
 
-        // Add a permissive allow rule so only the global deny (depth) matters.
+        // Deny rule first (policy order matters: first match wins).
+        if let Err(e) = enforce_max_depth(&mut authorizer, DEFAULT_MAX_DELEGATION_DEPTH) {
+            return e.into_response();
+        }
         let _ = authorizer.add_code("allow if true;");
-        let _ = add_context_facts(&mut authorizer, "GET", "/test", "cid");
+        if let Err(e) = add_context_facts(&mut authorizer, "GET", "/test", "cid") {
+            return e.into_response();
+        }
 
-        match evaluate_policy(&mut authorizer) {
+        match authorize_only(&mut authorizer) {
             Ok(()) => (axum::http::StatusCode::OK, "OK").into_response(),
             Err(e) => e.into_response(),
         }

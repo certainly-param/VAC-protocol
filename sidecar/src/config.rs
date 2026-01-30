@@ -216,7 +216,7 @@ impl Config {
             .or(env_config.session_key_rotation_interval_secs)
             .or_else(|| file_config.as_ref().and_then(|f| f.sidecar.as_ref()?.session_key_rotation_interval_secs))
             .unwrap_or(300);
-        
+
         let adapters_dir = cli_args.adapters_dir
             .as_ref()
             .or_else(|| env_config.adapters_dir.as_ref())

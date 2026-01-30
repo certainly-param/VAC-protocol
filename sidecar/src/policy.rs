@@ -3,38 +3,28 @@ use crate::error::VacError;
 use crate::receipt::ReceiptInfo; // Ensure ReceiptInfo is public in receipt.rs
 use crate::delegation::{enforce_max_depth, DEFAULT_MAX_DELEGATION_DEPTH};
 
-/// Evaluate Datalog policy using Biscuit Authorizer
-pub fn evaluate_policy(authorizer: &mut Authorizer) -> Result<(), VacError> {
+/// Run authorizer.authorize() and map result to VacError. Use when you have
+/// already added global deny rules (e.g. enforce_max_depth) and allow rules.
+pub fn authorize_only(authorizer: &mut Authorizer) -> Result<(), VacError> {
     use tracing::{info, warn};
-    
-    // Global VAC policy: delegation depth must be bounded.
-    // This is enforced in the authorizer (mathematical / Datalog enforcement).
-    enforce_max_depth(authorizer, DEFAULT_MAX_DELEGATION_DEPTH)?;
-
     match authorizer.authorize() {
         Ok(_) => {
-            // Log successful policy evaluation
-            info!(
-                policy_decision = "allow",
-                "Policy evaluation: ALLOW - Request authorized"
-            );
+            info!(policy_decision = "allow", "Policy evaluation: ALLOW - Request authorized");
             Ok(())
         }
         Err(e) => {
-            // Extract LLM-readable error message for agent debugging
-            let error_message = format!("Policy evaluation failed: {:?}", e);
-            
-            // Log policy denial with structured fields
-            warn!(
-                policy_decision = "deny",
-                policy_error = %error_message,
-                "Policy evaluation: DENY - {}",
-                error_message
-            );
-            
-            Err(VacError::PolicyViolation(error_message))
+            let msg = format!("Policy evaluation failed: {:?}", e);
+            warn!(policy_decision = "deny", policy_error = %msg, "Policy evaluation: DENY - {}", msg);
+            Err(VacError::PolicyViolation(msg))
         }
     }
+}
+
+/// Evaluate Datalog policy using Biscuit Authorizer
+pub fn evaluate_policy(authorizer: &mut Authorizer) -> Result<(), VacError> {
+    // Global VAC policy: delegation depth must be bounded.
+    enforce_max_depth(authorizer, DEFAULT_MAX_DELEGATION_DEPTH)?;
+    authorize_only(authorizer)
 }
 
 pub fn add_context_facts(
@@ -95,4 +85,96 @@ pub fn add_receipt_facts(
     )).map_err(|e| VacError::InternalError(format!("Failed to add receipt fact: {:?}", e)))?;
     
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use biscuit_auth::{Authorizer, Biscuit, KeyPair};
+    use crate::receipt::ReceiptInfo;
+
+    fn root_biscuit_no_depth() -> Biscuit {
+        let kp = KeyPair::new();
+        Biscuit::builder().build(&kp).unwrap()
+    }
+
+    #[test]
+    fn evaluate_policy_allow_if_true() {
+        let root = root_biscuit_no_depth();
+        let mut auth = Authorizer::new();
+        auth.add_token(&root).unwrap();
+        auth.add_code("allow if true;").unwrap();
+        assert!(evaluate_policy(&mut auth).is_ok());
+    }
+
+    #[test]
+    fn evaluate_policy_deny_if_true() {
+        let root = root_biscuit_no_depth();
+        let mut auth = Authorizer::new();
+        auth.add_token(&root).unwrap();
+        auth.add_code("deny if true;").unwrap();
+        auth.add_code("allow if true;").unwrap(); // allow too, but deny wins
+        let r = evaluate_policy(&mut auth);
+        assert!(r.is_err());
+        assert!(matches!(r, Err(VacError::PolicyViolation(_))));
+    }
+
+    #[test]
+    fn evaluate_policy_no_allow_denied() {
+        let root = root_biscuit_no_depth();
+        let mut auth = Authorizer::new();
+        auth.add_token(&root).unwrap();
+        // no allow rule
+        let r = evaluate_policy(&mut auth);
+        assert!(r.is_err());
+        assert!(matches!(r, Err(VacError::PolicyViolation(_))));
+    }
+
+    #[test]
+    fn add_context_facts_and_allow_operation() {
+        let root = root_biscuit_no_depth();
+        let mut auth = Authorizer::new();
+        auth.add_token(&root).unwrap();
+        add_context_facts(&mut auth, "GET", "/search", "cid-1").unwrap();
+        auth.add_code(r#"allow if operation("GET", "/search");"#).unwrap();
+        assert!(evaluate_policy(&mut auth).is_ok());
+    }
+
+    #[test]
+    fn evaluate_policy_depth_over_limit_denied() {
+        let kp = biscuit_auth::KeyPair::new();
+        let mut b = biscuit_auth::Biscuit::builder();
+        b.add_fact(biscuit_auth::builder::Fact::new(
+            "depth".to_string(),
+            vec![biscuit_auth::builder::int(6)],
+        ))
+        .unwrap();
+        let root = b.build(&kp).unwrap();
+        let mut auth = Authorizer::new();
+        auth.add_token(&root).unwrap();
+        enforce_max_depth(&mut auth, crate::delegation::DEFAULT_MAX_DELEGATION_DEPTH).unwrap();
+        auth.add_code("allow if true;").unwrap();
+        let r = super::authorize_only(&mut auth);
+        assert!(r.is_err());
+        assert!(matches!(r, Err(VacError::PolicyViolation(_))));
+    }
+
+    #[test]
+    fn add_receipt_facts_and_allow_prior_event() {
+        let root = root_biscuit_no_depth();
+        let info = ReceiptInfo {
+            operation: "GET /search".into(),
+            correlation_id: "cid-1".into(),
+            timestamp: 1704067200,
+        };
+        let mut auth = Authorizer::new();
+        auth.add_token(&root).unwrap();
+        add_context_facts(&mut auth, "POST", "/charge", "cid-1").unwrap();
+        add_receipt_facts(&mut auth, &info).unwrap();
+        auth.add_code(
+            r#"allow if operation("POST", "/charge"), prior_event($op, $cid, $ts), $op.starts_with("GET /search");"#,
+        )
+        .unwrap();
+        assert!(evaluate_policy(&mut auth).is_ok());
+    }
 }

@@ -91,3 +91,70 @@ pub fn verify_correlation_id_match(
     
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use biscuit_auth::{KeyPair, builder::Fact};
+
+    fn build_receipt_biscuit(operation: &str, correlation_id: &str, timestamp: i64) -> Biscuit {
+        let kp = KeyPair::new();
+        let mut builder = Biscuit::builder();
+        builder
+            .add_fact(Fact::new(
+                "prior_event".to_string(),
+                vec![
+                    biscuit_auth::builder::string(operation),
+                    biscuit_auth::builder::string(correlation_id),
+                    biscuit_auth::builder::int(timestamp),
+                ],
+            ))
+            .unwrap();
+        builder.build(&kp).unwrap()
+    }
+
+    #[test]
+    fn extract_receipt_info_ok() {
+        let receipt = build_receipt_biscuit("GET /search", "cid-123", 1704067200);
+        let info = extract_receipt_info(&receipt).unwrap();
+        assert_eq!(info.operation, "GET /search");
+        assert_eq!(info.correlation_id, "cid-123");
+        assert_eq!(info.timestamp, 1704067200);
+    }
+
+    #[test]
+    fn extract_receipt_info_no_prior_event_fails() {
+        let kp = KeyPair::new();
+        let empty = Biscuit::builder().build(&kp).unwrap();
+        let err = extract_receipt_info(&empty).unwrap_err();
+        assert!(matches!(err, VacError::ReceiptError(_)));
+    }
+
+    #[test]
+    fn verify_receipt_expiry_recent_ok() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let recent = (now - 60) as i64;
+        assert!(verify_receipt_expiry(recent).is_ok());
+    }
+
+    #[test]
+    fn verify_receipt_expiry_old_fails() {
+        let ts = 0i64; // ancient
+        let err = verify_receipt_expiry(ts).unwrap_err();
+        assert!(matches!(err, VacError::ReceiptExpired));
+    }
+
+    #[test]
+    fn verify_correlation_id_match_same_ok() {
+        assert!(verify_correlation_id_match("a", "a").is_ok());
+    }
+
+    #[test]
+    fn verify_correlation_id_match_different_fails() {
+        let err = verify_correlation_id_match("a", "b").unwrap_err();
+        assert!(matches!(err, VacError::CorrelationIdMismatch));
+    }
+}

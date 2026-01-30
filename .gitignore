@@ -41,3 +41,6 @@ coverage/
 # Cursor/AI assistant
 .cursorignore
 .cursor/
+
+# Text files (local notes)
+*.txt

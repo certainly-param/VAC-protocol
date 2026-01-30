@@ -53,3 +53,82 @@ pub fn verify_receipt_biscuit(
     
     Ok(receipt)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use biscuit_auth::KeyPair;
+    use std::sync::{Arc, RwLock};
+
+    fn test_keypair() -> KeyPair {
+        KeyPair::new()
+    }
+
+    #[test]
+    fn verify_root_biscuit_valid_token_correct_key() {
+        let kp = test_keypair();
+        let biscuit = Biscuit::builder().build(&kp).unwrap();
+        let token = biscuit.to_base64().unwrap();
+        let pk = kp.public();
+        let result = verify_root_biscuit(&token, &pk, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn verify_root_biscuit_valid_token_wrong_key() {
+        let kp = test_keypair();
+        let other = KeyPair::new();
+        let biscuit = Biscuit::builder().build(&kp).unwrap();
+        let token = biscuit.to_base64().unwrap();
+        let wrong_pk = other.public();
+        let result = verify_root_biscuit(&token, &wrong_pk, None);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(crate::error::VacError::InvalidSignature)));
+    }
+
+    #[test]
+    fn verify_root_biscuit_invalid_base64() {
+        let kp = test_keypair();
+        let pk = kp.public();
+        let result = verify_root_biscuit("!!!invalid-base64!!!", &pk, None);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(crate::error::VacError::InvalidSignature)));
+    }
+
+    #[test]
+    fn verify_root_biscuit_revoked_token() {
+        let kp = test_keypair();
+        let biscuit = Biscuit::builder().build(&kp).unwrap();
+        let token = biscuit.to_base64().unwrap();
+        let pk = kp.public();
+        let token_id = crate::revocation::extract_token_id(&token).unwrap();
+        let mut filter = RevocationFilter::new();
+        filter.revoke(&token_id).unwrap();
+        let filter = Arc::new(RwLock::new(filter));
+        let result = verify_root_biscuit(&token, &pk, Some(&filter));
+        assert!(result.is_err());
+        assert!(matches!(result, Err(crate::error::VacError::InvalidSignature)));
+    }
+
+    #[test]
+    fn verify_receipt_biscuit_valid_correct_key() {
+        let kp = test_keypair();
+        let receipt = Biscuit::builder().build(&kp).unwrap();
+        let receipt_b64 = receipt.to_base64().unwrap();
+        let pk = kp.public();
+        let result = verify_receipt_biscuit(&receipt_b64, &pk);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn verify_receipt_biscuit_wrong_key() {
+        let kp = test_keypair();
+        let other = KeyPair::new();
+        let receipt = Biscuit::builder().build(&kp).unwrap();
+        let receipt_b64 = receipt.to_base64().unwrap();
+        let wrong_pk = other.public();
+        let result = verify_receipt_biscuit(&receipt_b64, &wrong_pk);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(crate::error::VacError::InvalidSignature)));
+    }
+}

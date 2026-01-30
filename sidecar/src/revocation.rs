@@ -64,6 +64,70 @@ impl Default for RevocationFilter {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn revocation_filter_empty_not_revoked() {
+        let f = RevocationFilter::new();
+        let id = [0u8; 32];
+        assert!(!f.is_revoked(&id));
+        assert_eq!(f.revoked_count(), 0);
+    }
+
+    #[test]
+    fn revocation_filter_revoke_then_is_revoked() {
+        let mut f = RevocationFilter::new();
+        let id = [1u8; 32];
+        assert!(!f.is_revoked(&id));
+        f.revoke(&id).unwrap();
+        assert!(f.is_revoked(&id));
+        assert_eq!(f.revoked_count(), 1);
+    }
+
+    #[test]
+    fn revocation_filter_update_from_ids() {
+        let mut f = RevocationFilter::new();
+        let id1 = [1u8; 32];
+        let id2 = [2u8; 32];
+        f.update_from_ids(vec![id1, id2]);
+        assert!(f.is_revoked(&id1));
+        assert!(f.is_revoked(&id2));
+        assert_eq!(f.revoked_count(), 2);
+    }
+
+    #[test]
+    fn revocation_filter_revoke_invalid_length() {
+        let mut f = RevocationFilter::new();
+        let short = [0u8; 16];
+        let err = f.revoke(&short).unwrap_err();
+        assert!(matches!(err, VacError::InternalError(_)));
+    }
+
+    #[test]
+    fn revocation_filter_is_revoked_invalid_length_rejects() {
+        let f = RevocationFilter::new();
+        let short = [0u8; 16];
+        assert!(f.is_revoked(&short));
+    }
+
+    #[test]
+    fn extract_token_id_deterministic() {
+        let id1 = extract_token_id("abc").unwrap();
+        let id2 = extract_token_id("abc").unwrap();
+        assert_eq!(id1, id2);
+        assert_eq!(id1.len(), 32);
+    }
+
+    #[test]
+    fn extract_token_id_different_inputs_different_ids() {
+        let id1 = extract_token_id("abc").unwrap();
+        let id2 = extract_token_id("xyz").unwrap();
+        assert_ne!(id1, id2);
+    }
+}
+
 /// Extract token ID from a Root Biscuit
 /// 
 /// The token ID is derived from the biscuit's signature/public key.

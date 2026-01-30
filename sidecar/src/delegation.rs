@@ -30,6 +30,17 @@ pub fn extract_depth(authorizer: &mut Authorizer) -> Result<Option<i64>, VacErro
     Ok(result.first().map(|(d,)| *d))
 }
 
+/// Like `extract_depth`, but returns the maximum depth when a token has multiple
+/// (e.g. attenuated biscuits with accumulated blocks). Used for delegation chain verification.
+pub fn extract_max_depth(authorizer: &mut Authorizer) -> Result<Option<i64>, VacError> {
+    let query = "depth_value($d) <- depth($d)";
+    let result: Vec<(i64,)> = authorizer
+        .query(query)
+        .map_err(|e| VacError::InternalError(format!("Failed to query depth: {:?}", e)))?;
+
+    Ok(result.iter().map(|(d,)| *d).max())
+}
+
 /// Add a global deny rule enforcing max delegation depth.
 ///
 /// Model rule:
@@ -90,7 +101,7 @@ pub fn verify_delegation_chain(
         let mut a = biscuit
             .authorizer()
             .map_err(|_| VacError::InvalidSignature)?;
-        let depth = extract_depth(&mut a)?
+        let depth = extract_max_depth(&mut a)?
             .ok_or_else(|| VacError::PolicyViolation("Delegation token missing depth(N) fact".into()))?;
 
         if depth != expected_depth {
@@ -99,7 +110,9 @@ pub fn verify_delegation_chain(
                 idx, expected_depth, depth
             )));
         }
-        expected_depth += 1;
+        if idx + 1 < chain_tokens_b64.len() {
+            expected_depth += 1;
+        }
 
         let id_hex = hex::encode(extract_token_id(t)?);
         ids.push(id_hex);
@@ -120,7 +133,7 @@ pub fn verify_delegation_chain(
     let mut auth_authorizer = auth_biscuit
         .authorizer()
         .map_err(|_| VacError::InvalidSignature)?;
-    let auth_depth = extract_depth(&mut auth_authorizer)?
+    let auth_depth = extract_max_depth(&mut auth_authorizer)?
         .ok_or_else(|| VacError::PolicyViolation("Authorization token missing depth(N) fact".into()))?;
     
     if auth_depth != expected_depth {
@@ -130,9 +143,37 @@ pub fn verify_delegation_chain(
         )));
     }
 
-    // Add the Authorization token ID to the chain
-    ids.push(hex::encode(auth_id));
-
     Ok((ids, expected_depth))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use biscuit_auth::{KeyPair, Biscuit};
+    use biscuit_auth::builder::Fact;
+
+    fn root_with_depth(kp: &KeyPair, d: i64) -> Biscuit {
+        let mut b = Biscuit::builder();
+        b.add_fact(Fact::new("depth".to_string(), vec![biscuit_auth::builder::int(d)]))
+            .unwrap();
+        b.build(kp).unwrap()
+    }
+
+    #[test]
+    fn verify_chain_t0_t1_t2() {
+        let kp = KeyPair::new();
+        let t0 = root_with_depth(&kp, 0);
+        let t1 = root_with_depth(&kp, 1);
+        let t2 = root_with_depth(&kp, 2);
+        let chain = vec![
+            t0.to_base64().unwrap(),
+            t1.to_base64().unwrap(),
+            t2.to_base64().unwrap(),
+        ];
+        let auth = t2.to_base64().unwrap();
+        let (ids, depth) = verify_delegation_chain(&kp.public(), &chain, &auth).unwrap();
+        assert_eq!(depth, 2);
+        assert_eq!(ids.len(), 3);
+    }
 }
 

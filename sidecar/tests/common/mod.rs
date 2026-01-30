@@ -1,12 +1,15 @@
 // Common test utilities
 
-use biscuit_auth::{KeyPair, Biscuit};
+use biscuit_auth::{KeyPair, Biscuit, PublicKey};
+use std::sync::Arc;
+use vac_sidecar::{SidecarState, SharedState};
 
 /// Generate a test Root Biscuit signed with the given keypair
+#[allow(dead_code)]
 pub fn generate_test_root_biscuit(
     root_keypair: &KeyPair,
 ) -> Result<Biscuit, Box<dyn std::error::Error>> {
-    let mut builder = Biscuit::builder();
+    let builder = Biscuit::builder();
     
     // Add a permissive allow policy for Phase 1 testing
     // This allows all operations - in production, policies would be more restrictive
@@ -20,7 +23,25 @@ pub fn generate_test_root_biscuit(
     Ok(biscuit)
 }
 
+/// Create SharedState for tests with default rate-limit/replay settings.
+pub fn default_test_state(
+    public_key: PublicKey,
+    api_key: impl Into<String>,
+    upstream_url: impl Into<String>,
+) -> SharedState {
+    Arc::new(std::sync::RwLock::new(SidecarState::new(
+        public_key,
+        api_key.into(),
+        upstream_url.into(),
+        100,
+        60,
+        false,
+        60,
+    )))
+}
+
 /// Cleanup test environment variables
+#[allow(dead_code)]
 pub fn cleanup_test_env() {
     std::env::remove_var("VAC_ROOT_PUBLIC_KEY");
     std::env::remove_var("VAC_API_KEY");

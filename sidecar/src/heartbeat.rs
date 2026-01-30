@@ -50,39 +50,11 @@ pub async fn start_heartbeat_task(
                     warn!("💓 Control Plane requested shutdown");
                     break;
                 }
-                
-                // Update heartbeat state
-                {
-                    let mut s = state.write().map_err(|_| {
-                        VacError::InternalError("Failed to acquire state lock".to_string())
-                    }).unwrap();
-                    s.heartbeat_healthy = true;
-                    s.heartbeat_failure_count = 0;
-                    s.last_heartbeat = SystemTime::now();
-                }
             }
             Err(e) => {
                 error!("💓 Heartbeat failed: {}", e);
-                
-                // Increment failure count
-                let failure_count = {
-                    let mut s = state.write().map_err(|_| {
-                        VacError::InternalError("Failed to acquire state lock".to_string())
-                    }).unwrap();
-                    s.heartbeat_healthy = false;
-                    s.heartbeat_failure_count += 1;
-                    let count = s.heartbeat_failure_count;
-                    
-                    // Enter lockdown after MAX failures
-                    if count >= MAX_HEARTBEAT_FAILURES {
-                        warn!("🚨 Entering lockdown mode after {} heartbeat failures", count);
-                        s.enter_lockdown();
-                    }
-                    
-                    count
-                };
-                
-                if failure_count >= MAX_HEARTBEAT_FAILURES {
+                let count = state.read().unwrap().heartbeat_failure_count;
+                if count >= MAX_HEARTBEAT_FAILURES {
                     error!("🚨 Lockdown mode activated - all non-read-only requests will be rejected");
                 }
             }
@@ -90,8 +62,9 @@ pub async fn start_heartbeat_task(
     }
 }
 
-/// Send a heartbeat to the Control Plane
-async fn send_heartbeat(
+/// Send a heartbeat to the Control Plane.
+/// Public for integration tests (e.g. heartbeat_test, revocation_test).
+pub async fn send_heartbeat(
     state: &SharedState,
     control_plane_url: &str,
     rotation_interval_secs: u64,
@@ -147,32 +120,57 @@ async fn send_heartbeat(
         .json(&request)
         .send()
         .await
-        .map_err(|e| VacError::ProxyError(format!("Heartbeat request failed: {}", e)))?;
-    
+        .map_err(|e| {
+            update_heartbeat_failure_state(state);
+            VacError::ProxyError(format!("Heartbeat request failed: {}", e))
+        })?;
+
     if !response.status().is_success() {
+        update_heartbeat_failure_state(state);
         return Err(VacError::ProxyError(format!(
             "Heartbeat returned status: {}",
             response.status()
         )));
     }
-    
+
     let heartbeat_response: HeartbeatResponse = response
         .json()
         .await
-        .map_err(|e| VacError::InternalError(format!("Failed to parse heartbeat response: {}", e)))?;
+        .map_err(|e| {
+            update_heartbeat_failure_state(state);
+            VacError::InternalError(format!("Failed to parse heartbeat response: {}", e))
+        })?;
     
-    // Process response
     if !heartbeat_response.healthy {
         warn!("💓 Control Plane marked sidecar as unhealthy");
-        return Ok(false); // Signal to stop heartbeat task
+        return Ok(false);
     }
-    
+
     // Update revocation filter if provided
     if let Some(revoked_ids) = heartbeat_response.revoked_token_ids {
         update_revocation_filter_from_ids(state, revoked_ids)?;
     }
-    
-    Ok(true) // Continue heartbeat task
+
+    // Update heartbeat state on success (task and direct callers e.g. tests)
+    {
+        let mut s = state.write().map_err(|_| {
+            VacError::InternalError("Failed to acquire state lock".to_string())
+        })?;
+        s.heartbeat_healthy = true;
+        s.heartbeat_failure_count = 0;
+        s.last_heartbeat = SystemTime::now();
+    }
+    Ok(true)
+}
+
+fn update_heartbeat_failure_state(state: &SharedState) {
+    let mut s = state.write().unwrap();
+    s.heartbeat_healthy = false;
+    s.heartbeat_failure_count += 1;
+    let count = s.heartbeat_failure_count;
+    if count >= MAX_HEARTBEAT_FAILURES {
+        s.enter_lockdown();
+    }
 }
 
 /// Update revocation filter from list of revoked token IDs
