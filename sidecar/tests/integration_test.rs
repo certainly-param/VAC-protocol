@@ -1,6 +1,23 @@
 // Integration tests for VAC Sidecar
 mod common;
 
+// #region agent log
+fn agent_log(location: &str, message: &str, data: &str, hypothesis_id: &str) {
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+    let line = format!(
+        r#"{{"location":"{}","message":"{}","data":{},"timestamp":{},"sessionId":"debug-session","hypothesisId":"{}"}}"#,
+        location,
+        message.replace('"', "\\\"").replace('\n', " "),
+        data,
+        ts,
+        hypothesis_id
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"c:\Users\param\Desktop\github-projects\vac\.cursor\debug.log") {
+        let _ = writeln!(f, "{}", line);
+    }
+}
+// #endregion
+
 use axum::{
     http::{HeaderValue, Method},
     routing::any,
@@ -10,6 +27,7 @@ use biscuit_auth::{Biscuit, KeyPair, Authorizer};
 use uuid::Uuid;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use std::io::Write;
 
 use vac_sidecar::SharedState;
 
@@ -191,6 +209,13 @@ async fn create_strict_router(state: SharedState) -> Router {
             .map(|s| s.to_string())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
+        // #region agent log
+        let method_str_early = parts.method.to_string();
+        let path_early = parts.uri.path().to_string();
+        let receipt_count = parts.headers.get_all("X-VAC-Receipt").iter().count();
+        agent_log("integration_test strict_handler", "request", &format!(r#"{{"method":"{}","path":"{}","receipt_count":{},"request_cid":"{}"}}"#, method_str_early, path_early, receipt_count, correlation_id), "B");
+        // #endregion
+
         let (user_root_key, session_key_pub, api_key, upstream_url, proxy) = {
             let s = state.read().unwrap();
             (s.user_root_public_key, s.session_key.public(), s.api_key.clone(), s.upstream_url.clone(), s.proxy.clone())
@@ -221,14 +246,19 @@ async fn create_strict_router(state: SharedState) -> Router {
 
             let receipt_info = match extract_receipt_info(&receipt) {
                 Ok(info) => info,
-                Err(e) => return e.into_response(),
+                Err(e) => {
+                    agent_log("integration_test strict_handler", "extract_receipt_info failed", &format!(r#"{{"err":"{:?}"}}"#, e), "B");
+                    return e.into_response();
+                }
             };
-            
+            agent_log("integration_test strict_handler", "receipt_info", &format!(r#"{{"operation":"{}","receipt_cid":"{}","request_cid":"{}"}}"#, receipt_info.operation, receipt_info.correlation_id, correlation_id), "B");
+
             if let Err(e) = verify_receipt_expiry(receipt_info.timestamp) {
                 return e.into_response();
             }
             
             if let Err(e) = verify_correlation_id_match(&receipt_info.correlation_id, &correlation_id) {
+                agent_log("integration_test strict_handler", "correlation_id mismatch", &format!(r#"{{"receipt_cid":"{}","request_cid":"{}"}}"#, receipt_info.correlation_id, correlation_id), "B");
                 return e.into_response();
             }
 
@@ -252,7 +282,9 @@ async fn create_strict_router(state: SharedState) -> Router {
         "#;
         let _ = authorizer.add_code(policy);
 
+        agent_log("integration_test strict_handler", "about to evaluate_policy", &format!(r#"{{"method":"{}","path":"{}"}}"#, method_str, path), "B");
         if let Err(e) = evaluate_policy(&mut authorizer) {
+            agent_log("integration_test strict_handler", "policy_denied", &format!(r#"{{"err":"{:?}"}}"#, e), "B");
             return e.into_response();
         }
 

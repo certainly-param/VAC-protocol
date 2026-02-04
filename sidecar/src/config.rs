@@ -378,10 +378,25 @@ struct EnvConfig {
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // #region agent log
+    /// Serialize config tests that touch VAC_* env to avoid cross-test clearing (hypothesis A).
+    static CONFIG_ENV_LOCK: Mutex<()> = Mutex::new(());
+    fn agent_log(location: &str, message: &str, data: &str, hypothesis_id: &str) {
+        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+        let line = format!(r#"{{"location":"{}","message":"{}","data":{},"timestamp":{},"sessionId":"debug-session","hypothesisId":"{}"}}"#, location, message.replace('"', "\\\""), data, ts, hypothesis_id);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"c:\Users\param\Desktop\github-projects\vac\.cursor\debug.log") {
+            let _ = writeln!(f, "{}", line);
+        }
+    }
+    // #endregion
 
     #[test]
     fn test_config_precedence_cli_overrides_env() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
         // Clean up any existing env vars first
         std::env::remove_var("VAC_ROOT_PUBLIC_KEY");
         std::env::remove_var("VAC_API_KEY");
@@ -459,6 +474,7 @@ level = "warn"
 
     #[test]
     fn test_config_env_overrides_file() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
         // Clean up any existing env vars first (including from .env file)
         std::env::remove_var("VAC_ROOT_PUBLIC_KEY");
         std::env::remove_var("VAC_API_KEY");
@@ -467,7 +483,9 @@ level = "warn"
         // This should take precedence over .env file and config file
         std::env::set_var("VAC_ROOT_PUBLIC_KEY", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
         std::env::set_var("VAC_API_KEY", "env-api-key");
-        
+        // #region agent log
+        agent_log("config.rs:test_config_env_overrides_file", "set VAC_API_KEY=env-api-key", r#"{"test":"env_overrides_file"}"#, "A");
+        // #endregion
         // Verify env var is set (debug check)
         assert_eq!(std::env::var("VAC_API_KEY").unwrap(), "env-api-key");
         
@@ -500,7 +518,11 @@ api_key = "file-api-key"
         };
         
         // Verify env var is still set right before loading
-        match std::env::var("VAC_API_KEY") {
+        // #region agent log
+        let api_key_result = std::env::var("VAC_API_KEY");
+        agent_log("config.rs:502", "read VAC_API_KEY before load", &format!(r#"{{"ok":{}}}"#, api_key_result.is_ok()), "A");
+        // #endregion
+        match api_key_result {
             Ok(val) => assert_eq!(val, "env-api-key", "Env var must be set before Config::load"),
             Err(e) => panic!("VAC_API_KEY env var not found: {:?}. This suggests test isolation issues.", e),
         }
@@ -516,9 +538,13 @@ api_key = "file-api-key"
 
     #[test]
     fn test_config_defaults() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
         // Clean up any existing env vars first
         std::env::remove_var("VAC_ROOT_PUBLIC_KEY");
         std::env::remove_var("VAC_API_KEY");
+        // #region agent log
+        agent_log("config.rs:test_config_defaults", "removed VAC_* (test_config_defaults started)", r#"{"test":"defaults"}"#, "A");
+        // #endregion
         
         std::env::set_var("VAC_ROOT_PUBLIC_KEY", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
         std::env::set_var("VAC_API_KEY", "test-api-key");

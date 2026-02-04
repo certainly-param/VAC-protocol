@@ -24,7 +24,6 @@ def main():
         sidecar_url="http://localhost:3000",
         root_biscuit=ROOT_BISCUIT
     )
-    
     print(f"Correlation ID: {vac.correlation_id}")
     print()
     
@@ -60,16 +59,14 @@ def main():
     
     print()
     
-    # Step 3: Charge
+    # Step 3: Charge (use raise_for_status so VACError is raised on 403/409 for proper handling)
     print("[Step 3] Charging customer...")
     try:
         response = vac.post("/charge", json={"amount": 35000, "currency": "usd"})
-        if response.ok:
-            print(f"  Status: {response.status_code}")
-            print(f"  Response: {response.text[:100]}...")
-        else:
-            print(f"  Error: {response.text}")
-            return
+        if not response.ok:
+            response.raise_for_status()
+        print(f"  Status: {response.status_code}")
+        print(f"  Response: {response.text[:100]}...")
     except VACError as e:
         if e.is_missing_receipt:
             print(f"  Policy requires prior step: {e.message}")
@@ -77,6 +74,9 @@ def main():
             print(f"  Receipt expired: {e.message}")
         else:
             print(f"  Policy denied: {e.message}")
+        return
+    except Exception as e:
+        print(f"  Failed: {e}")
         return
     
     print()

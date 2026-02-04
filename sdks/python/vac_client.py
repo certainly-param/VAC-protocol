@@ -63,7 +63,9 @@ class VACError(Exception):
     
     @property
     def is_missing_receipt(self) -> bool:
-        return self.status_code == 403 and "prior_event" in self.message
+        return self.status_code == 403 and (
+            "prior_event" in self.message or "prior step" in self.message
+        )
     
     @property
     def is_expired(self) -> bool:
@@ -142,7 +144,7 @@ class VACClient:
     
     def _request_httpx(self, method, url, headers, params, json_data, data):
         """Make request using httpx (supports multiple same-name headers)."""
-        with httpx.Client() as client:
+        with httpx.Client(timeout=30.0) as client:
             return client.request(
                 method,
                 url,
@@ -171,6 +173,7 @@ class VACClient:
             params=params,
             json=json_data,
             data=data,
+            timeout=30.0,
         )
     
     def get(self, path: str, **kwargs) -> VACResponse:
