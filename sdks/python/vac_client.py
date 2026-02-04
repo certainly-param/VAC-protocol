@@ -30,15 +30,19 @@ except ImportError:
 
 @dataclass
 class VACResponse:
-    """Response from VAC sidecar."""
+    """Response from VAC sidecar.
+    Note: headers is a single-value-per-name dict; duplicate header names in the
+    raw response collapse to one value (use the receipt field for X-VAC-Receipt).
+    """
     status_code: int
     headers: Dict[str, str]
     text: str
     receipt: Optional[str] = None
     
     def json(self) -> Any:
+        """Parse response body as JSON. Returns None if body is empty; raises json.JSONDecodeError if not valid JSON."""
         import json
-        return json.loads(self.text)
+        return json.loads(self.text) if self.text else None
     
     @property
     def ok(self) -> bool:
@@ -102,13 +106,14 @@ class VACClient:
         if self.correlation_id is None:
             self.correlation_id = str(uuid.uuid4())
     
-    def _build_headers(self) -> List[tuple]:
+    def _build_headers(self, include_content_type: bool = True) -> List[tuple]:
         """Build headers list (supports multiple same-name headers)."""
         headers = [
             ("Authorization", f"Bearer {self.root_biscuit}"),
             ("X-Correlation-ID", self.correlation_id),
-            ("Content-Type", "application/json"),
         ]
+        if include_content_type:
+            headers.append(("Content-Type", "application/json"))
         for receipt in self.receipts:
             headers.append(("X-VAC-Receipt", receipt))
         return headers
@@ -121,9 +126,15 @@ class VACClient:
         json: Optional[Any] = None,
         data: Optional[Any] = None,
     ) -> VACResponse:
-        """Make a request through the VAC sidecar."""
+        """Make a request through the VAC sidecar.
+        Provide only one of json or data per request; if both are set, json is used.
+        Content-Type: application/json is sent only when the request has a body (non-GET or json/data provided).
+        """
+        path = path if path.startswith("/") else f"/{path}"
         url = f"{self.sidecar_url}{path}"
-        headers = self._build_headers()
+        has_body = json is not None or data is not None
+        include_content_type = method.upper() != "GET" or has_body
+        headers = self._build_headers(include_content_type=include_content_type)
         
         if USE_HTTPX:
             response = self._request_httpx(method, url, headers, params, json, data)
@@ -150,29 +161,39 @@ class VACClient:
                 url,
                 headers=headers,
                 params=params,
-                json=json_data,
-                content=data,
+                json=json_data if json_data is not None else None,
+                content=data if json_data is None else None,
             )
     
     def _request_requests(self, method, url, headers, params, json_data, data):
-        """Make request using requests library."""
-        # Convert headers list to dict (loses duplicate headers)
-        # For proper multi-header support, use httpx
+        """Make request using requests library.
+        Note: requests does not support multiple headers with the same name.
+        The sidecar expects multiple X-VAC-Receipt headers; with requests we send
+        one comma-separated value, which the sidecar may reject. Use httpx for
+        multi-step workflows (search -> select -> charge).
+        """
+        if len(self.receipts) > 1:
+            import warnings
+            warnings.warn(
+                "Multiple receipts with 'requests' library: sidecar expects separate "
+                "X-VAC-Receipt headers. Multi-step workflows may fail. Install httpx.",
+                UserWarning,
+                stacklevel=2,
+            )
         headers_dict = {}
         for k, v in headers:
             if k in headers_dict and k == "X-VAC-Receipt":
-                # Combine receipts with comma (not ideal, but works for requests)
                 headers_dict[k] = f"{headers_dict[k]}, {v}"
             else:
                 headers_dict[k] = v
-        
+
         return requests.request(
             method,
             url,
             headers=headers_dict,
             params=params,
-            json=json_data,
-            data=data,
+            json=json_data if json_data is not None else None,
+            data=data if json_data is None else None,
             timeout=30.0,
         )
     
