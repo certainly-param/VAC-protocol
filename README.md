@@ -124,4 +124,4 @@ MIT. See [LICENSE](LICENSE).
 
 [Biscuit Auth](https://www.biscuitsec.org/), [Axum](https://github.com/tokio-rs/axum), [Tokio](https://tokio.rs/).
 
-<p align="center">Made while eating a lot of 🍊!</p>!
+<p align="center">Made while eating a lot of 🍊!</p>
