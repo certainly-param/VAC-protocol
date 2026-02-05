@@ -87,6 +87,8 @@ print(f"Receipts collected: {len(vac.receipts)}")
 - Python 3.7+
 - `httpx` (recommended) or `requests`
 
+**Observability:** For OpenTelemetry tracing of VAC requests, install with `pip install vac-client[opentelemetry]` and use `opentelemetry-instrumentation-httpx`, or see [docs/OBSERVABILITY.md](../../docs/OBSERVABILITY.md) in the repo.
+
 **Multi-step workflows (search → select → charge):** The sidecar expects multiple `X-VAC-Receipt` headers, one per prior step. The `requests` library cannot send multiple headers with the same name, so multi-step workflows will fail with `requests`. Use `httpx` for any flow that accumulates more than one receipt.
 
 ## License

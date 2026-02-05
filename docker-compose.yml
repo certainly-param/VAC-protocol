@@ -30,3 +30,16 @@ services:
       - "8080:8080"
     environment:
       - DEMO_API_KEY=${VAC_API_KEY:-demo-api-key}
+
+  # Optional: Python/FastAPI demo API (same endpoints). Use with:
+  #   VAC_UPSTREAM_URL=http://demo-api-python:8080 docker-compose --profile fastapi up
+  demo-api-python:
+    build:
+      context: .
+      dockerfile: demo-api-python/Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      - DEMO_API_KEY=${VAC_API_KEY:-demo-api-key}
+    profiles:
+      - fastapi

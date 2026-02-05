@@ -50,6 +50,17 @@ def verify_api_key(authorization: Optional[str] = Header(None)) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+@app.get("/")
+async def root():
+    """Root: point to health and docs. Use another port via DEMO_API_PORT if 8080 is in use."""
+    return {
+        "service": "VAC Demo API (FastAPI)",
+        "docs": "/docs",
+        "health": "/health",
+        "endpoints": ["GET /health", "POST /search", "POST /charge"],
+    }
+
+
 @app.get("/health", response_model=ApiResponse)
 async def health():
     """Health check (no auth required)."""

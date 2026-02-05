@@ -42,5 +42,14 @@ coverage/
 .cursorignore
 .cursor/
 
-# Text files (local notes)
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# Text files (local notes); keep requirements.txt
 *.txt
+!**/requirements.txt

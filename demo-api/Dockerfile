@@ -1,4 +1,4 @@
-FROM rust:1.83-bookworm as builder
+FROM rust:1.85-bookworm AS builder
 WORKDIR /app
 COPY demo-api/ .
 RUN cargo build --release
