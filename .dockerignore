@@ -1,0 +1,40 @@
+# Rust build artifacts (huge - main cause of slow context transfer)
+target/
+**/target/
+
+# Git
+.git/
+.gitignore
+
+# Local config and secrets
+config.toml
+.env
+.env.*
+*.pem
+*.key
+
+# IDE and OS
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+Thumbs.db
+
+# Logs and test artifacts
+*.log
+logs/
+*.profraw
+lcov.info
+coverage/
+
+# Python (not needed for Rust image builds; sdks/python is separate)
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Misc
+*.txt
+*.md
+!README.md

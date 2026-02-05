@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vac-sidecar
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vac-sidecar
+  template:
+    metadata:
+      labels:
+        app: vac-sidecar
+    spec:
+      containers:
+      - name: sidecar
+        image: vac-sidecar:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: VAC_ROOT_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vac-secrets
+              key: root-public-key
+        - name: VAC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vac-secrets
+              key: api-key
+        - name: VAC_UPSTREAM_URL
+          value: "https://api.example.com"
+        - name: VAC_CONTROL_PLANE_URL
+          value: "https://control.example.com"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vac-sidecar
+spec:
+  selector:
+    app: vac-sidecar
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: LoadBalancer
