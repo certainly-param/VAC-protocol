@@ -9,6 +9,15 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/rust-1.70+-orange.svg" alt="Rust">
+  <img src="https://img.shields.io/badge/python-3.7+-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/fastapi-demo-009688.svg" alt="FastAPI demo API">
+</p>
+
+<p align="center">
+  <a href="https://crates.io/crates/vac-sidecar/0.1.0"><img src="https://img.shields.io/crates/v/vac-sidecar.svg?label=vac-sidecar" alt="vac-sidecar crate"></a>
+  <a href="https://crates.io/crates/vac-control-plane/0.1.0"><img src="https://img.shields.io/crates/v/vac-control-plane.svg?label=vac-control-plane" alt="vac-control-plane crate"></a>
+  <a href="https://crates.io/crates/vac-demo-api/0.1.0"><img src="https://img.shields.io/crates/v/vac-demo-api.svg?label=vac-demo-api" alt="vac-demo-api crate"></a>
+  <a href="https://pypi.org/project/vac-client/0.1.0/"><img src="https://img.shields.io/pypi/v/vac-client.svg?label=vac-client" alt="vac-client on PyPI"></a>
 </p>
 
 ## What is VAC?
@@ -66,6 +75,11 @@ Response will include `X-VAC-Receipt` for use in follow-up requests. More option
 | [Observability](docs/OBSERVABILITY.md) | Tracing, OpenTelemetry |
 | [LangChain integration](docs/INTEGRATION_LANGCHAIN.md) | Using VAC with LangChain / LangGraph |
 | [Python SDK](sdks/python/README.md) | Client library and examples |
+
+## Packages
+
+- **Rust crates**: [`vac-sidecar`](https://crates.io/crates/vac-sidecar/0.1.0), [`vac-control-plane`](https://crates.io/crates/vac-control-plane/0.1.0), [`vac-demo-api`](https://crates.io/crates/vac-demo-api/0.1.0)
+- **Python client**: [`vac-client`](https://pypi.org/project/vac-client/0.1.0/)
 
 ## How it works
 

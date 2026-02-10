@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/certainly-param/VAC-protocol"
+description = "VAC demo API: example upstream API for testing the VAC sidecar"
+readme = "../README.md"
+keywords = ["vac", "demo", "api", "testing"]
+categories = ["web-programming::http-server"]
 
 [dependencies]
 axum = "0.7"

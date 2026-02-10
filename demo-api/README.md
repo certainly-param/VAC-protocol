@@ -221,4 +221,4 @@ async fn my_endpoint(
 
 ## Testing
 
-The demo API is designed to work seamlessly with the V-A-C sidecar for end-to-end testing. It provides realistic API responses while being simple enough to understand and modify.
+Use this API with the VAC sidecar for end-to-end testing. Same endpoints the sidecar expects; tweak responses in code if needed.

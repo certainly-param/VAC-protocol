@@ -1,6 +1,6 @@
 # Contributing to VAC Protocol
 
-Thank you for your interest in contributing to the VAC (Verifiable Agentic Credential) Protocol!
+Contributions welcome. Here's how to get started.
 
 ## Getting Started
 
@@ -41,7 +41,7 @@ vac/
 
 - Open an issue with `[Feature]` prefix
 - Describe the use case and expected behavior
-- Reference relevant sections of the [Architecture](docs/ARCHITECTURE.md) or [Security](docs/SECURITY.md) docs
+- Reference relevant sections of the [Architecture](docs/ARCHITECTURE.md) or [API](docs/API.md) docs
 
 ### Pull Requests
 
@@ -67,7 +67,7 @@ VAC is a security-critical project. When contributing:
 - **Never log secrets** (API keys, tokens, etc.)
 - **Fail closed** - deny by default on errors
 - **Validate all inputs** - especially from untrusted sources (agents)
-- **Review the [Security Guide](docs/SECURITY.md)** before making security-related changes
+- **Review the [Architecture](docs/ARCHITECTURE.md)** (and policy/revocation behavior) before making security-related changes
 
 ### Testing
 

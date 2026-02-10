@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/certainly-param/VAC-protocol"
+description = "VAC control plane: mock server for heartbeat, revocation, and kill switch operations"
+readme = "../README.md"
+keywords = ["vac", "security", "control-plane", "revocation"]
+categories = ["web-programming::http-server"]
 
 [dependencies]
 axum = "0.7"
