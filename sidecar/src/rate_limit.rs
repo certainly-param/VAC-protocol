@@ -67,9 +67,13 @@ impl RateLimiter {
             // Partial refill based on elapsed time
             let tokens_to_add = (elapsed.as_secs_f64() / self.window_duration.as_secs_f64()) 
                 * self.max_requests as f64;
-            bucket.tokens = (bucket.tokens as f64 + tokens_to_add)
-                .min(self.max_requests as f64) as u32;
-            bucket.last_refill = now;
+            // Only advance last_refill when at least 1 whole token is earned,
+            // preventing sub-token drift from compounding on every check.
+            if tokens_to_add >= 1.0 {
+                bucket.tokens = (bucket.tokens as f64 + tokens_to_add)
+                    .min(self.max_requests as f64) as u32;
+                bucket.last_refill = now;
+            }
         }
         
         // Check if we have tokens available

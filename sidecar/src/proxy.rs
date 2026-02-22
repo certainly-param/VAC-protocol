@@ -1,6 +1,6 @@
 use axum::{
-    body::Body,
-    http::{Request, Response, StatusCode, HeaderValue, Method, Uri},
+    body::{Body, Bytes},
+    http::{Response, StatusCode, HeaderValue, Method, Uri},
 };
 use crate::error::VacError;
 use reqwest::Client;
@@ -8,12 +8,14 @@ use std::str::FromStr;
 
 /// HTTP proxy trait for future framework abstraction
 /// 
-/// This allows swapping Axum → Pingora in Phase 4 if needed
+/// This allows swapping Axum → Pingora in Phase 4 if needed.
+/// Accepts pre-read request parts and body bytes to avoid double body reads.
 #[allow(async_fn_in_trait)] // Known limitation: async fn in traits, but needed for trait abstraction
 pub trait Proxy: Send + Sync {
     async fn forward(
         &self,
-        req: Request<Body>,
+        parts: &axum::http::request::Parts,
+        body_bytes: Bytes,
         api_key: &str,
         upstream_url: &str,
     ) -> Result<Response<Body>, VacError>;
@@ -35,13 +37,14 @@ impl AxumProxy {
 impl Proxy for AxumProxy {
     async fn forward(
         &self,
-        req: Request<Body>,
+        parts: &axum::http::request::Parts,
+        body_bytes: Bytes,
         api_key: &str,
         upstream_url: &str,
     ) -> Result<Response<Body>, VacError> {
         // Build upstream URL
-        let path = req.uri().path();
-        let query = req.uri().query().unwrap_or("");
+        let path = parts.uri.path();
+        let query = parts.uri.query().unwrap_or("");
         let upstream_uri = if query.is_empty() {
             format!("{}{}", upstream_url, path)
         } else {
@@ -51,29 +54,15 @@ impl Proxy for AxumProxy {
         let uri = Uri::from_str(&upstream_uri)
             .map_err(|e| VacError::ProxyError(format!("Invalid upstream URL: {}", e)))?;
         
-        // Extract method
-        let method = req.method().clone();
-        
-        // Convert axum::Body to reqwest::Body
-        // Note: Use a reasonable body size limit (10MB)
-        const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
-        let (parts, body) = req.into_parts();
-        let body_bytes = axum::body::to_bytes(body, MAX_BODY_SIZE)
-            .await
-            .map_err(|e| VacError::ProxyError(format!("Failed to read request body: {}", e)))?;
-        
-        // Rebuild request without body for header copying
-        let req_for_headers = Request::from_parts(parts, Body::empty());
-        
-        // Build reqwest request
-        let reqwest_method = match method {
+        // Build reqwest request — body bytes are already read and validated
+        let reqwest_method = match parts.method {
             Method::GET => reqwest::Method::GET,
             Method::POST => reqwest::Method::POST,
             Method::PUT => reqwest::Method::PUT,
             Method::DELETE => reqwest::Method::DELETE,
             Method::PATCH => reqwest::Method::PATCH,
             _ => {
-                return Err(VacError::ProxyError(format!("Unsupported HTTP method: {}", method)));
+                return Err(VacError::ProxyError(format!("Unsupported HTTP method: {}", parts.method)));
             }
         };
         
@@ -82,7 +71,7 @@ impl Proxy for AxumProxy {
             .body(body_bytes);
         
         // Copy headers (except sensitive ones we'll inject)
-        for (name, value) in req_for_headers.headers() {
+        for (name, value) in &parts.headers {
             // Skip headers that should be stripped or replaced
             if name.as_str() == "authorization" {
                 continue; // Will be replaced with API key

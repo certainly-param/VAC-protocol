@@ -1,5 +1,8 @@
 // V-A-C Protocol: Biscuit Fact Extraction Proof-of-Concept
 // This verifies that biscuit-auth v3+ supports Datalog queries for fact extraction
+//
+// To run: copy into a crate with `biscuit-auth = "3.1"` as a dependency, or
+// build from the `sidecar/` directory after adding this as an example target.
 
 use biscuit_auth::{KeyPair, Biscuit, Authorizer, builder::Fact};
 use biscuit_auth::error::TokenError;
@@ -7,9 +10,9 @@ use biscuit_auth::error::TokenError;
 fn main() -> Result<(), TokenError> {
     // 1. SETUP: Simulating the Sidecar minting a Receipt
     let sidecar_key = KeyPair::new();
-    let root_key = KeyPair::new();
 
-    let mut builder = Biscuit::builder(&sidecar_key);
+    // biscuit-auth v3: builder() takes no arguments; key is passed to build()
+    let mut builder = Biscuit::builder();
     
     // The Sidecar adds facts to the receipt
     // fact: prior_event("search", "uuid-123", 1700000000)
@@ -22,31 +25,25 @@ fn main() -> Result<(), TokenError> {
         ],
     )).unwrap();
 
-    let receipt_biscuit = builder.build()?;
+    let receipt_biscuit = builder.build(&sidecar_key)?;
     println!("✅ Receipt Minted");
 
     // ---------------------------------------------------------
 
     // 2. VERIFICATION: Simulating the Sidecar reading the Receipt later
-    // We create an authorizer attached to the receipt
-    let mut authorizer = receipt_biscuit.authorizer()?;
-    
-    // We assume the Sidecar trusts itself (verifies with its own public key)
+    // Create a fresh authorizer and load the receipt token into it
+    let mut authorizer = Authorizer::new();
     authorizer.add_token(&receipt_biscuit)?;
 
     // 3. THE CRITICAL STEP: Querying Data back into Rust
-    // We write a Datalog rule to select the variables we want
+    // We write a Datalog rule to select the variables we want.
+    // biscuit-auth v3: query_all returns typed tuples.
     let query = "receipt_data($op, $id, $ts) <- prior_event($op, $id, $ts)";
     
-    let result = authorizer.query(query)?;
+    let results: Vec<(String, String, i64)> = authorizer.query_all(query)?;
 
     // 4. EXTRACTION: Loop through results
-    for term in result {
-        // Terms come back as Datalog types, we convert them to Rust types
-        let op: String = term[0].to_string(); // "search"
-        let correlation_id: String = term[1].to_string(); // "uuid-123"
-        let timestamp: i64 = term[2].as_i64().unwrap(); // 1700000000
-
+    for (op, correlation_id, timestamp) in &results {
         println!("🔍 Extracted Fact:");
         println!("   Operation: {}", op);
         println!("   Correlation ID: {}", correlation_id);

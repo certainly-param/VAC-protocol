@@ -31,6 +31,19 @@ mcp = FastMCP(
     description="Verifiable Agent Credentials: task-scoped credentials and receipt-chained requests via VAC sidecar.",
 )
 
+# --------------------------------------------------------------------------
+# Persistent client so receipts accumulate across tool calls
+# --------------------------------------------------------------------------
+_client: Optional[VACClient] = None
+
+
+def _get_client() -> VACClient:
+    """Return a shared VACClient, creating it on first use."""
+    global _client
+    if _client is None:
+        _client = VACClient(sidecar_url=SIDECAR_URL, root_biscuit=ROOT_BISCUIT)
+    return _client
+
 
 @mcp.tool()
 def vac_request(
@@ -41,7 +54,7 @@ def vac_request(
     """Send an HTTP request through the VAC sidecar. Method (GET, POST, etc.), path (e.g. /search, /charge), and optional JSON body. Returns status, response body, and whether a receipt was issued."""
     if not ROOT_BISCUIT:
         return {"ok": False, "error": "VAC_ROOT_BISCUIT not set"}
-    client = VACClient(sidecar_url=SIDECAR_URL, root_biscuit=ROOT_BISCUIT)
+    client = _get_client()
     try:
         method = method.upper()
         if method == "GET":
@@ -76,8 +89,17 @@ def vac_request(
 
 @mcp.tool()
 def vac_receipts_count() -> dict:
-    """Return the number of receipts the current VAC client session has (for debugging). Each vac_request uses a fresh client, so this always returns 0 unless you use the SDK directly."""
-    return {"receipts_count": 0, "note": "Each vac_request uses a new client; use Python SDK for multi-step receipt chains."}
+    """Return the number of receipts the current VAC client session has accumulated."""
+    client = _get_client()
+    return {"receipts_count": len(client.receipts)}
+
+
+@mcp.tool()
+def vac_clear_receipts() -> dict:
+    """Clear all stored receipts and start a fresh session (new correlation ID). Use between independent workflows."""
+    client = _get_client()
+    client.clear_receipts()
+    return {"ok": True, "message": "Receipts cleared, new session started."}
 
 
 if __name__ == "__main__":

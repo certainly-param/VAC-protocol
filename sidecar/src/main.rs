@@ -488,9 +488,8 @@ async fn vac_guard_layer(
 
     info!("Request authorized, forwarding to upstream");
 
-    // H. Forward Request
-    let req = axum::http::Request::from_parts(parts, axum::body::Body::from(body_bytes));
-    let response = proxy.as_ref().forward(req, &api_key, &upstream_url).await
+    // H. Forward Request (body already read and validated — no double read)
+    let response = proxy.as_ref().forward(&parts, body_bytes.clone(), &api_key, &upstream_url).await
         .map_err(|e| {
             error!(
                 proxy_error = %e,

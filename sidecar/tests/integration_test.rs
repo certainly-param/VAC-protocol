@@ -125,9 +125,11 @@ async fn create_permissive_router(state: SharedState) -> Router {
             return e.into_response();
         }
 
-        // I. Forward
-        let req = axum::http::Request::from_parts(parts, body);
-        let response = match proxy.as_ref().forward(req, api_key.as_str(), &upstream_url).await {
+        // I. Forward (read body bytes first to match Proxy trait)
+        let body_bytes = axum::body::to_bytes(body, 10 * 1024 * 1024)
+            .await
+            .unwrap_or_default();
+        let response = match proxy.as_ref().forward(&parts, body_bytes, api_key.as_str(), &upstream_url).await {
             Ok(r) => r,
             Err(e) => return e.into_response(),
         };
@@ -289,8 +291,10 @@ async fn create_strict_router(state: SharedState) -> Router {
         }
 
         // ... Forwarding and Minting logic remains same ...
-        let req = axum::http::Request::from_parts(parts, body);
-        let response = match proxy.as_ref().forward(req, api_key.as_str(), &upstream_url).await {
+        let body_bytes = axum::body::to_bytes(body, 10 * 1024 * 1024)
+            .await
+            .unwrap_or_default();
+        let response = match proxy.as_ref().forward(&parts, body_bytes, api_key.as_str(), &upstream_url).await {
             Ok(r) => r,
             Err(e) => return e.into_response(),
         };
