@@ -29,7 +29,7 @@ pub fn default_test_state(
     api_key: impl Into<String>,
     upstream_url: impl Into<String>,
 ) -> SharedState {
-    Arc::new(std::sync::RwLock::new(SidecarState::new(
+    Arc::new(tokio::sync::RwLock::new(SidecarState::new(
         public_key,
         api_key.into(),
         upstream_url.into(),

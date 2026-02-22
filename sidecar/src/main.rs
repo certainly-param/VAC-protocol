@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root_public_key = biscuit_auth::PublicKey::from_bytes(&config.root_public_key)
         .map_err(|e| VacError::ConfigError(format!("Invalid public key format: {}", e)))?;
     
-    let state = Arc::new(std::sync::RwLock::new(
+    let state = Arc::new(tokio::sync::RwLock::new(
         SidecarState::new(
             root_public_key, 
             config.api_key, 
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Phase 4.8: Start replay cache cleanup task (if enabled)
     if config.replay_cache_enabled {
         let replay_cache = {
-            let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+            let s = state.read().await;
             s.replay_cache.clone()
         };
         
@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Optional: preload adapters from a local directory at startup.
     if let Some(dir) = &config.adapters_dir {
         let loaded = {
-            let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+            let s = state.read().await;
             load_adapters_from_dir(&s.adapter_registry, dir)?
         };
         tracing::info!("🧩 Loaded {} WASM adapter(s) from {}", loaded, dir);
@@ -139,7 +139,7 @@ async fn vac_guard_layer(
     
     // Phase 4.8: Replay attack mitigation check
     {
-        let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+        let s = state.read().await;
         match s.replay_cache.check_and_insert(&correlation_id) {
             Ok(true) => {
                 // New correlation ID - allowed
@@ -204,12 +204,12 @@ async fn vac_guard_layer(
     
     // Phase 4.7: Rate limiting check (before processing request)
     let sidecar_id = {
-        let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+        let s = state.read().await;
         s.sidecar_id.clone()
     };
     
     {
-        let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+        let s = state.read().await;
         if !s.rate_limiter.check(&sidecar_id) {
             warn!(
                 policy_decision = "deny",
@@ -223,13 +223,13 @@ async fn vac_guard_layer(
     
     // Check lockdown mode (before processing request)
     let lockdown_mode = {
-        let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+        let s = state.read().await;
         s.lockdown_mode
     };
     
     if lockdown_mode {
         // In lockdown mode, only allow read-only requests
-        if !state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?.is_read_only(&method_str) {
+        if !state.read().await.is_read_only(&method_str) {
             warn!(
                 policy_decision = "deny",
                 reason = "lockdown_mode_active",
@@ -256,7 +256,7 @@ async fn vac_guard_layer(
 
     // C. Verify Root Biscuit (with revocation check)
     let (user_root_key, session_key_pub, api_key, upstream_url, proxy, revocation_filter) = {
-        let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+        let s = state.read().await;
         (
             s.user_root_public_key, 
             s.session_key.public(), 
@@ -452,7 +452,7 @@ async fn vac_guard_layer(
     // F.1 Optional WASM adapter facts (pinned by hash in the Root Biscuit)
     if let Some(adapter_hash) = extract_adapter_hash(&mut authorizer)? {
         let registry = {
-            let s = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+            let s = state.read().await;
             s.adapter_registry.clone()
         };
 
@@ -507,7 +507,7 @@ async fn vac_guard_layer(
 
     // I. Mint Receipt
     if response.status().is_success() {
-        let state_read = state.read().map_err(|_| VacError::InternalError("Lock poison".into()))?;
+        let state_read = state.read().await;
         let mut builder = Biscuit::builder();
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 

@@ -37,6 +37,9 @@ zeroize = { version = "1.7", features = ["zeroize_derive"] }
 libc = "0.2"
 dashmap = "5.5"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_System_Memory"] }
+
 [dev-dependencies]
 wiremock = "0.6"
 wat = "1.0"

@@ -53,7 +53,7 @@ pub async fn start_heartbeat_task(
             }
             Err(e) => {
                 error!("💓 Heartbeat failed: {}", e);
-                let count = state.read().unwrap().heartbeat_failure_count;
+                let count = state.read().await.heartbeat_failure_count;
                 if count >= MAX_HEARTBEAT_FAILURES {
                     error!("🚨 Lockdown mode activated - all non-read-only requests will be rejected");
                 }
@@ -71,9 +71,7 @@ pub async fn send_heartbeat(
 ) -> Result<bool, VacError> {
     // Extract state needed for heartbeat
     let (sidecar_id, should_rotate) = {
-        let s = state.read().map_err(|_| {
-            VacError::InternalError("Failed to acquire state lock".to_string())
-        })?;
+        let s = state.read().await;
         
         let should_rotate = s.should_rotate_key(rotation_interval_secs);
         (
@@ -84,18 +82,14 @@ pub async fn send_heartbeat(
     
     // Rotate key if needed (before sending heartbeat)
     if should_rotate {
-        let mut s = state.write().map_err(|_| {
-            VacError::InternalError("Failed to acquire state lock".to_string())
-        })?;
+        let mut s = state.write().await;
         info!("🔑 Rotating session key");
         s.rotate_session_key();
     }
     
     // Get updated public key after potential rotation
     let session_key_pub = {
-        let s = state.read().map_err(|_| {
-            VacError::InternalError("Failed to acquire state lock".to_string())
-        })?;
+        let s = state.read().await;
         general_purpose::STANDARD.encode(s.session_key.public().to_bytes())
     };
     
@@ -115,31 +109,37 @@ pub async fn send_heartbeat(
     let client = reqwest::Client::new();
     let url = format!("{}/heartbeat", control_plane_url);
     
-    let response = client
+    let response = match client
         .post(&url)
         .json(&request)
         .send()
         .await
-        .map_err(|e| {
-            update_heartbeat_failure_state(state);
-            VacError::ProxyError(format!("Heartbeat request failed: {}", e))
-        })?;
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            update_heartbeat_failure_state(state).await;
+            return Err(VacError::ProxyError(format!("Heartbeat request failed: {}", e)));
+        }
+    };
 
     if !response.status().is_success() {
-        update_heartbeat_failure_state(state);
+        update_heartbeat_failure_state(state).await;
         return Err(VacError::ProxyError(format!(
             "Heartbeat returned status: {}",
             response.status()
         )));
     }
 
-    let heartbeat_response: HeartbeatResponse = response
+    let heartbeat_response: HeartbeatResponse = match response
         .json()
         .await
-        .map_err(|e| {
-            update_heartbeat_failure_state(state);
-            VacError::InternalError(format!("Failed to parse heartbeat response: {}", e))
-        })?;
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            update_heartbeat_failure_state(state).await;
+            return Err(VacError::InternalError(format!("Failed to parse heartbeat response: {}", e)));
+        }
+    };
     
     if !heartbeat_response.healthy {
         warn!("💓 Control Plane marked sidecar as unhealthy");
@@ -148,14 +148,12 @@ pub async fn send_heartbeat(
 
     // Update revocation filter if provided
     if let Some(revoked_ids) = heartbeat_response.revoked_token_ids {
-        update_revocation_filter_from_ids(state, revoked_ids)?;
+        update_revocation_filter_from_ids(state, revoked_ids).await?;
     }
 
     // Update heartbeat state on success (task and direct callers e.g. tests)
     {
-        let mut s = state.write().map_err(|_| {
-            VacError::InternalError("Failed to acquire state lock".to_string())
-        })?;
+        let mut s = state.write().await;
         s.heartbeat_healthy = true;
         s.heartbeat_failure_count = 0;
         s.last_heartbeat = SystemTime::now();
@@ -163,8 +161,8 @@ pub async fn send_heartbeat(
     Ok(true)
 }
 
-fn update_heartbeat_failure_state(state: &SharedState) {
-    let mut s = state.write().unwrap();
+async fn update_heartbeat_failure_state(state: &SharedState) {
+    let mut s = state.write().await;
     s.heartbeat_healthy = false;
     s.heartbeat_failure_count += 1;
     let count = s.heartbeat_failure_count;
@@ -174,13 +172,11 @@ fn update_heartbeat_failure_state(state: &SharedState) {
 }
 
 /// Update revocation filter from list of revoked token IDs
-fn update_revocation_filter_from_ids(
+async fn update_revocation_filter_from_ids(
     state: &SharedState,
     revoked_ids: Vec<[u8; 32]>,
 ) -> Result<(), VacError> {
-    let state_guard = state.read().map_err(|_| {
-        VacError::InternalError("Failed to acquire state lock".to_string())
-    })?;
+    let state_guard = state.read().await;
     
     let mut filter = state_guard.revocation_filter.write().map_err(|_| {
         VacError::InternalError("Failed to acquire revocation filter lock".to_string())

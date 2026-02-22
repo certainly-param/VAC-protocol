@@ -72,7 +72,8 @@ async fn handle_heartbeat(
     info!("💓 Heartbeat received from sidecar: {}", request.sidecar_id);
     
     // Check kill switch
-    let kill_switch_active = *state.kill_switch_active.read().unwrap();
+    let kill_switch_active = *state.kill_switch_active.read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if kill_switch_active {
         warn!("🚨 Kill switch active - returning unhealthy");
         return Ok(ResponseJson(HeartbeatResponse {
@@ -83,7 +84,8 @@ async fn handle_heartbeat(
     
     // Update sidecar info
     {
-        let mut sidecars = state.sidecars.write().unwrap();
+        let mut sidecars = state.sidecars.write()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         sidecars.insert(
             request.sidecar_id.clone(),
             SidecarInfo {
@@ -96,7 +98,8 @@ async fn handle_heartbeat(
     
     // Get revoked tokens
     let revoked_tokens = {
-        let revoked = state.revoked_tokens.read().unwrap();
+        let revoked = state.revoked_tokens.read()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         if revoked.is_empty() {
             None
         } else {
@@ -136,7 +139,8 @@ async fn handle_revoke(
     
     // Add to revocation list
     {
-        let mut revoked = state.revoked_tokens.write().unwrap();
+        let mut revoked = state.revoked_tokens.write()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         if !revoked.contains(&token_id) {
             revoked.push(token_id);
             info!("🚫 Token revoked: {}", request.token_id);
@@ -153,7 +157,8 @@ async fn handle_kill(
     state: axum::extract::State<Arc<ControlPlaneState>>,
 ) -> Result<StatusCode, StatusCode> {
     {
-        let mut kill_switch = state.kill_switch_active.write().unwrap();
+        let mut kill_switch = state.kill_switch_active.write()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         *kill_switch = true;
     }
     warn!("🚨 Kill switch activated - all sidecars will be marked unhealthy");
@@ -167,7 +172,8 @@ async fn handle_revive(
     state: axum::extract::State<Arc<ControlPlaneState>>,
 ) -> Result<StatusCode, StatusCode> {
     {
-        let mut kill_switch = state.kill_switch_active.write().unwrap();
+        let mut kill_switch = state.kill_switch_active.write()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         *kill_switch = false;
     }
     info!("✅ Kill switch deactivated - sidecars will resume normal operation");
@@ -180,7 +186,8 @@ async fn handle_revive(
 async fn list_sidecars(
     state: axum::extract::State<Arc<ControlPlaneState>>,
 ) -> Result<ResponseJson<serde_json::Value>, StatusCode> {
-    let sidecars = state.sidecars.read().unwrap();
+    let sidecars = state.sidecars.read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let sidecar_list: Vec<_> = sidecars
         .values()
         .map(|info| {
@@ -189,7 +196,7 @@ async fn list_sidecars(
                 "session_key_pub": info.session_key_pub,
                 "last_heartbeat": info.last_heartbeat
                     .duration_since(UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_secs(),
             })
         })

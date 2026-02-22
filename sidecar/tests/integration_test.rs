@@ -64,7 +64,7 @@ async fn create_permissive_router(state: SharedState) -> Router {
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         let (user_root_key, session_key_pub, api_key, upstream_url, proxy) = {
-            let s = state.read().unwrap();
+    let s = state.read().await;
             (s.user_root_public_key, s.session_key.public(), s.api_key.clone(), s.upstream_url.clone(), s.proxy.clone())
         };
         
@@ -134,7 +134,7 @@ async fn create_permissive_router(state: SharedState) -> Router {
 
         // J. Mint
         if response.status().is_success() {
-            let state_read = state.read().unwrap();
+            let state_read = state.read().await;
             let mut builder = Biscuit::builder();
             let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
@@ -217,7 +217,7 @@ async fn create_strict_router(state: SharedState) -> Router {
         // #endregion
 
         let (user_root_key, session_key_pub, api_key, upstream_url, proxy) = {
-            let s = state.read().unwrap();
+    let s = state.read().await;
             (s.user_root_public_key, s.session_key.public(), s.api_key.clone(), s.upstream_url.clone(), s.proxy.clone())
         };
         
@@ -296,7 +296,7 @@ async fn create_strict_router(state: SharedState) -> Router {
         };
 
         if response.status().is_success() {
-            let state_read = state.read().unwrap();
+            let state_read = state.read().await;
             let mut builder = Biscuit::builder();
             let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
@@ -437,7 +437,7 @@ async fn test_receipt_minting() {
     let receipt_header = response.headers().get("x-vac-receipt").unwrap();
     let receipt_str = receipt_header.to_str().unwrap();
     
-    let state_read = state.read().unwrap();
+    let state_read = state.read().await;
     let pub_key = state_read.session_key.public();
     let receipt = vac_sidecar::verify_receipt_biscuit(receipt_str, &pub_key).unwrap();
     let info = vac_sidecar::extract_receipt_info(&receipt).unwrap();
@@ -573,7 +573,7 @@ async fn test_receipt_chain() {
     assert_eq!(response.status().as_u16(), 200);
     
     let charge_receipt = response.headers().get("x-vac-receipt").unwrap().to_str().unwrap();
-    let state_read = state.read().unwrap();
+    let state_read = state.read().await;
     let charge_receipt_biscuit = vac_sidecar::verify_receipt_biscuit(charge_receipt, &state_read.session_key.public()).unwrap();
     let charge_info = vac_sidecar::extract_receipt_info(&charge_receipt_biscuit).unwrap();
     assert_eq!(charge_info.operation, "POST /charge");

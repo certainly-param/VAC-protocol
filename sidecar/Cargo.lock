@@ -3319,6 +3319,7 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "windows-sys 0.52.0",
  "wiremock",
  "zeroize",
 ]

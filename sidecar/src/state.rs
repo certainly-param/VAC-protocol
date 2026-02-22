@@ -1,5 +1,5 @@
 use biscuit_auth::{KeyPair, PublicKey};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::SystemTime;
 use crate::proxy::AxumProxy;
 use crate::revocation::RevocationFilter;
@@ -32,7 +32,7 @@ pub struct SidecarState {
     pub last_heartbeat: SystemTime,
     pub last_key_rotation: SystemTime,
     // Revocation
-    pub revocation_filter: Arc<RwLock<RevocationFilter>>,
+    pub revocation_filter: Arc<std::sync::RwLock<RevocationFilter>>,
     // WASM adapters
     pub adapter_registry: AdapterRegistry,
     // Rate limiting
@@ -42,7 +42,7 @@ pub struct SidecarState {
 }
 
 /// Shared state for use across async tasks
-pub type SharedState = Arc<RwLock<SidecarState>>;
+pub type SharedState = Arc<tokio::sync::RwLock<SidecarState>>;
 
 impl SidecarState {
     /// Create new SidecarState with generated session key
@@ -73,7 +73,7 @@ impl SidecarState {
             lockdown_mode: false,
             last_heartbeat: now,
             last_key_rotation: now,
-            revocation_filter: Arc::new(RwLock::new(RevocationFilter::new())),
+            revocation_filter: Arc::new(std::sync::RwLock::new(RevocationFilter::new())),
             adapter_registry: AdapterRegistry::new(),
             rate_limiter: RateLimiter::new(
                 rate_limit_max_requests,

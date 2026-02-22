@@ -30,7 +30,7 @@ async fn heartbeat_success_updates_state() {
     assert!(res.is_ok(), "heartbeat failed: {:?}", res);
     assert_eq!(res.unwrap(), true);
 
-    let s = state.read().unwrap();
+    let s = state.read().await;
     assert!(s.heartbeat_healthy);
     assert_eq!(s.heartbeat_failure_count, 0);
 }
@@ -51,7 +51,7 @@ async fn heartbeat_failure_increments_count() {
 
     let _ = send_heartbeat(&state, mock.uri().as_str(), 300).await;
 
-    let s = state.read().unwrap();
+    let s = state.read().await;
     assert!(!s.heartbeat_healthy);
     assert_eq!(s.heartbeat_failure_count, 1);
 }

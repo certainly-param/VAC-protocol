@@ -53,7 +53,7 @@ async fn test_delegation_depth_over_limit_denied() {
             None => return VacError::MissingToken.into_response(),
         };
 
-        let user_root_key = { state.read().unwrap().user_root_public_key };
+        let user_root_key = { state.read().await.user_root_public_key };
         let root_biscuit = match verify_root_biscuit(&token_str, &user_root_key, None) {
             Ok(b) => b,
             Err(e) => return e.into_response(),

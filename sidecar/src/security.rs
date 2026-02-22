@@ -39,8 +39,8 @@ impl From<SecureString> for String {
 
 /// Attempt to lock memory pages to prevent swapping to disk
 /// 
-/// This is a best-effort operation. On some systems (e.g., Windows),
-/// this may not be fully supported. Errors are logged but don't fail startup.
+/// This is a best-effort operation. Errors are logged but don't fail startup.
+/// Supported on Unix (mlock) and Windows (VirtualLock).
 pub fn mlock_memory(ptr: *const u8, len: usize) -> Result<(), String> {
     #[cfg(unix)]
     {
@@ -57,11 +57,27 @@ pub fn mlock_memory(ptr: *const u8, len: usize) -> Result<(), String> {
         }
     }
     
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::io;
+        let result = unsafe {
+            windows_sys::Win32::System::Memory::VirtualLock(
+                ptr as *mut std::ffi::c_void,
+                len,
+            )
+        };
+        if result != 0 {
+            Ok(())
+        } else {
+            let err = io::Error::last_os_error();
+            Err(format!("VirtualLock failed: {}", err))
+        }
+    }
+    
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (ptr, len);
-        // Windows and other platforms: mlock not available
-        // This is acceptable - zeroization is still effective
+        // Unsupported platform - zeroization is still effective
         Ok(())
     }
 }
@@ -83,7 +99,24 @@ pub fn munlock_memory(ptr: *const u8, len: usize) -> Result<(), String> {
         }
     }
     
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::io;
+        let result = unsafe {
+            windows_sys::Win32::System::Memory::VirtualUnlock(
+                ptr as *mut std::ffi::c_void,
+                len,
+            )
+        };
+        if result != 0 {
+            Ok(())
+        } else {
+            let err = io::Error::last_os_error();
+            Err(format!("VirtualUnlock failed: {}", err))
+        }
+    }
+    
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (ptr, len);
         Ok(())

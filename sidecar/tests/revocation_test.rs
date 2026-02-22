@@ -45,7 +45,7 @@ async fn revoked_token_rejected_after_heartbeat() {
     assert!(ok);
 
     let filter = {
-        let s = state.read().unwrap();
+        let s = state.read().await;
         s.revocation_filter.clone()
     };
     let result = verify_root_biscuit(&token_b64, &root_kp.public(), Some(&filter));

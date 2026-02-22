@@ -162,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = format!("0.0.0.0:{}", state.port);
     info!("🚀 V-A-C Demo API starting on {}", addr);
-    info!("📝 API Key: {}", state.api_key);
+    info!("📝 API Key: {}****", &state.api_key[..state.api_key.len().min(4)]);
     info!("📚 Endpoints:");
     info!("   GET  /health - Health check (no auth)");
     info!("   POST /search - Search endpoint (requires API key)");
